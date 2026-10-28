@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>デモンソウル　宝箱ポイント計算</title>
+<style>
+  :root {
+    --bg: #f6f7f4;
+    --text: #1f2a24;
+    --muted: #5d6b63;
+    --line: #d9ddd5;
+    --accent: #2f6f55;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151a17;
+      --text: #e8ece6;
+      --muted: #9aa89f;
+      --line: #2b342e;
+      --accent: #6fc39d;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151a17;
+    --text: #e8ece6;
+    --muted: #9aa89f;
+    --line: #2b342e;
+    --accent: #6fc39d;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  }
+  main { max-width: 480px; margin: 0 auto; padding: 32px 24px; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 24px; }
+  h1 { font-size: 1.6rem; margin: 0; }
+  #theme { padding: 6px 12px; font-size: .85rem; white-space: nowrap; }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 0;
+    border-top: 1px solid var(--line);
+  }
+  .name { font-weight: 600; }
+  .pt { color: var(--muted); font-size: .85rem; }
+  input {
+    width: 5.5em;
+    font: inherit;
+    font-size: 1.1rem;
+    text-align: right;
+    padding: 8px 10px;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 20px 0 0;
+    border-top: 2px solid var(--text);
+  }
+  .total span:first-child { font-weight: 600; }
+  #total { font-size: 2rem; font-weight: 700; color: var(--accent); }
+  button {
+    font: inherit;
+    cursor: pointer;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 16px;
+  }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #calc {
+    width: 100%;
+    margin: 20px 0 0;
+    font-weight: 600;
+    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  #reset { width: 100%; margin: 10px 0 0; color: var(--muted); }
+  .author { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; text-align: center; }
+  .rw { display: flex; justify-content: space-between; padding: 4px 0; }
+  .history-head { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; }
+  .history-head h2 { font-size: 1.1rem; margin: 0; }
+  #clear { padding: 6px 12px; font-size: .85rem; color: var(--muted); }
+  .item { padding: 12px 0; border-top: 1px solid var(--line); }
+  .item .time { color: var(--muted); font-size: .8rem; }
+  .item .sum { font-weight: 600; }
+  .item .detail { color: var(--muted); font-size: .85rem; }
+  .empty { color: var(--muted); padding: 12px 0; }
+  .reward { padding: 16px 0; border-top: 1px solid var(--line); margin-top: 20px; }
+  .reward .big { font-size: 1.4rem; font-weight: 700; }
+  .reward .next { color: var(--muted); font-size: .9rem; margin-top: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>デモンソウル　宝箱ポイント計算</h1>
+    <button id="theme" type="button"></button>
+  </div>
+
+  <div id="list"></div>
+
+  <button id="calc" type="button">計算する</button>
+  <button id="reset" type="button">入力をすべて消す</button>
+
+  <div class="total">
+    <span>合計</span>
+    <span><span id="total">0</span> pt</span>
+  </div>
+
+  <div class="reward">
+    <div id="got"></div>
+    <div class="next" id="next"></div>
+  </div>
+
+  <div class="history-head">
+    <h2>履歴</h2>
+    <button id="clear" type="button">履歴を消去</button>
+  </div>
+  <div id="history"></div>
+
+  <p class="author">作者　そうちゃ</p>
+</main>
+
+<script>
+  const chests = [
+    { name: "コモン", pt: 1 },
+    { name: "レア", pt: 2 },
+    { name: "エピック", pt: 8 },
+    { name: "レジェンダリー", pt: 32 },
+    { name: "ミシカル", pt: 120 }
+  ];
+
+  const list = document.getElementById("list");
+  const totalEl = document.getElementById("total");
+
+  chests.forEach((c, i) => {
+    const row = document.createElement("label");
+    row.className = "row";
+    row.innerHTML =
+      '<span><span class="name">' + c.name + '</span><br>' +
+      '<span class="pt">' + c.pt + ' pt</span></span>' +
+      '<input type="number" inputmode="numeric" min="0" step="1" value="0" data-i="' + i + '">';
+    list.appendChild(row);
+  });
+
+  const TYPES = { rare: "レア", epic: "エピック", legendary: "レジェンダリー", mythic: "ミシカル" };
+  const seq = [];
+  const add = (type, cost, n = 1) => { for (let i = 0; i < n; i++) seq.push({ type, cost }); };
+  add("rare", 10); add("epic", 20); add("rare", 10, 5); add("epic", 20); add("rare", 10);
+  add("epic", 20); add("rare", 10, 4); add("legendary", 60); add("epic", 20); add("rare", 10, 2);
+  add("epic", 20, 2); add("rare", 10, 2); add("legendary", 60); add("rare", 10, 2); add("legendary", 60);
+  add("rare", 10, 4); add("epic", 20); add("rare", 10, 2); add("epic", 20); add("rare", 10, 4);
+  add("epic", 20); add("rare", 10, 5); add("epic", 20); add("rare", 10, 4); add("epic", 20);
+  add("rare", 20, 2); add("epic", 20); add("rare", 20); add("mythic", 20); add("rare", 10);
+  const CYCLE = seq.reduce((a, s) => a + s.cost, 0); // 870
+
+  function rewards(sum) {
+    const cycles = Math.floor(sum / CYCLE);
+    const rem = sum % CYCLE;
+    const c = { rare: 0, epic: 0, legendary: 0, mythic: 0 };
+    seq.forEach(s => { c[s.type] += cycles; });
+    let acc = 0, next = { type: seq[0].type, remain: seq[0].cost };
+    for (const s of seq) {
+      if (acc + s.cost <= rem) { acc += s.cost; c[s.type]++; }
+      else { next = { type: s.type, remain: acc + s.cost - rem }; break; }
+    }
+    return { c, next };
+  }
+
+  function renderRewards(sum) {
+    const { c, next } = rewards(sum);
+    document.getElementById("got").innerHTML = Object.keys(TYPES).map(k =>
+      '<div class="rw"><span>' + TYPES[k] + '</span><span>' + fmt(c[k]) + ' 個</span></div>').join("");
+    document.getElementById("next").textContent =
+      "次は" + TYPES[next.type] + "(あと " + fmt(next.remain) + " pt)";
+    return c;
+  }
+
+  const KEY = "demonsouls-chest-history";
+  const historyEl = document.getElementById("history");
+  let history = [];
+
+  try { history = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { history = []; }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(history)); } catch (e) {}
+  }
+
+  function fmt(n) { return n.toLocaleString("ja-JP"); }
+
+  function renderHistory() {
+    if (!history.length) {
+      historyEl.innerHTML = '<div class="empty">まだ履歴がありません</div>';
+      return;
+    }
+    historyEl.innerHTML = history.map(h => {
+      const detail = chests
+        .map((c, i) => h.counts[i] ? c.name + " ×" + h.counts[i] : "")
+        .filter(Boolean).join("、") || "なし";
+      return '<div class="item">' +
+        '<div class="time">' + h.time + '</div>' +
+        '<div class="sum">' + fmt(h.sum) + ' pt</div>' +
+        '<div class="detail">' + detail + '</div>' +
+        '<div class="detail">' + (h.rewards
+          ? Object.keys(TYPES).map(k => TYPES[k] + " " + fmt(h.rewards[k])).join(" / ")
+          : "ミシカル " + fmt(h.mythical || 0)) + '</div></div>';
+    }).join("");
+  }
+
+  document.getElementById("calc").addEventListener("click", () => {
+    const counts = [];
+    let sum = 0;
+    list.querySelectorAll("input").forEach(el => {
+      const n = Math.max(0, parseInt(el.value, 10) || 0);
+      counts.push(n);
+      sum += n * chests[el.dataset.i].pt;
+    });
+    totalEl.textContent = fmt(sum);
+    const got = renderRewards(sum);
+
+    history.unshift({ time: new Date().toLocaleString("ja-JP"), counts, sum, rewards: got });
+    save();
+    renderHistory();
+  });
+
+  document.getElementById("reset").addEventListener("click", () => {
+    list.querySelectorAll("input").forEach(el => { el.value = 0; });
+    totalEl.textContent = "0";
+    renderRewards(0);
+  });
+
+  document.getElementById("clear").addEventListener("click", () => {
+    history = [];
+    save();
+    renderHistory();
+  });
+
+  const root = document.documentElement;
+  const themeBtn = document.getElementById("theme");
+  const THEME_KEY = "demonsouls-chest-theme";
+
+  function isDark() {
+    const t = root.getAttribute("data-theme");
+    if (t) return t === "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function updateThemeLabel() {
+    themeBtn.textContent = isDark() ? "ライトモード" : "ダークモード";
+  }
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "light" || saved === "dark") root.setAttribute("data-theme", saved);
+  } catch (e) {}
+  themeBtn.addEventListener("click", () => {
+    const next = isDark() ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    updateThemeLabel();
+  });
+  updateThemeLabel();
+
+  renderRewards(0);
+  renderHistory();
+</script>
+</body>
+</html>
